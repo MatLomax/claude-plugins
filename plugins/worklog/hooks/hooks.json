@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "worklog context" }
+          { "type": "command", "command": "worklog session-start" }
         ]
       }
     ],
