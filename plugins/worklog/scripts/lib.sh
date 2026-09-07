@@ -146,3 +146,12 @@ worklog_semver_lt() {
   done
   return 1
 }
+
+# Exit 0 iff auto-update has been opted out via WORKLOG_AUTO_UPDATE. Auto-update
+# is on by default; set the variable to 0/false/no/off (any case) to disable it.
+worklog_auto_update_disabled() {
+  case "$(printf '%s' "${WORKLOG_AUTO_UPDATE:-1}" | tr '[:upper:]' '[:lower:]')" in
+    0|false|no|off) return 0 ;;
+    *) return 1 ;;
+  esac
+}
