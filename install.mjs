@@ -157,7 +157,7 @@ async function main() {
   // --- write .claude/settings.json (deep-merge, never clobber) ---
   const settings = readJson(settingsPath);
   settings.extraKnownMarketplaces = settings.extraKnownMarketplaces || {};
-  settings.extraKnownMarketplaces[MARKETPLACE_ID] = { source: { source: 'github', repo: REPO } };
+  settings.extraKnownMarketplaces[MARKETPLACE_ID] = { source: { source: 'github', repo: REPO }, autoUpdate: true };
   settings.enabledPlugins = settings.enabledPlugins || {};
   for (const id of KNOWN_PLUGINS) {
     const key = `${id}@${MARKETPLACE_ID}`;
