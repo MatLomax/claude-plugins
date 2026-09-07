@@ -3,7 +3,8 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "worklog session-start" }
+          { "type": "command", "command": "worklog session-start" },
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/check-update.sh\"" }
         ]
       }
     ],

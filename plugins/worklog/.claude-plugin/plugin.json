@@ -1,6 +1,6 @@
 {
   "name": "worklog",
   "description": "Per-project, SQLite-backed task & decision log for coding agents, remembered across sessions. Requires the `worklog` binary on PATH.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "author": { "name": "Mathieu Lomax" }
 }

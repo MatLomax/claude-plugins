@@ -42,7 +42,7 @@ Update later with `/plugin marketplace update matlomax`.
 | Plugin | What it does |
 |---|---|
 | `image-to-html` | Reconstruct HTML from a mockup image and objectively gate the render against it — per-region SSIM, edge-XOR border detection, colour/tint sweeps, glyph measurement. Explicit-invoke only. |
-| `worklog` | Per-project, SQLite-backed task & decision log for coding agents, remembered across sessions — task tree with blocking, GitHub-issue links, first-class decisions, and a per-session journal, over MCP. Run `/worklog:init` per project. **Requires the [`worklog`](https://github.com/MatLomax/worklog) binary on PATH.** |
+| `worklog` | Per-project, SQLite-backed task & decision log for coding agents, remembered across sessions — task tree with blocking, GitHub-issue links, first-class decisions, and a per-session journal, over MCP. Run `/worklog:init` per project; `/worklog:update` upgrades the binary to the latest release (and a session-start check quietly flags when one is available). **Requires the [`worklog`](https://github.com/MatLomax/worklog) binary on PATH.** |
 
 ## Layout
 
