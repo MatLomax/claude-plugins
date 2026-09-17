@@ -13,6 +13,12 @@
       "source": "./plugins/worklog",
       "description": "Per-project, SQLite-backed task & decision log for coding agents, remembered across sessions. MCP server + SessionStart/Stop hooks + /worklog:init. Requires the `worklog` binary on PATH.",
       "defaultEnabled": false
+    },
+    {
+      "name": "mdtohtml",
+      "source": "./plugins/mdtohtml",
+      "description": "Convert Obsidian-compatible Markdown to styled, self-contained HTML with the mdtohtml CLI. Skill + /mdtohtml:update + auto-update on session start. Requires the `mdtohtml` binary on PATH.",
+      "defaultEnabled": false
     }
   ]
 }

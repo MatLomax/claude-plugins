@@ -1,0 +1,5 @@
+{
+  "name": "mdtohtml",
+  "description": "Convert Obsidian-compatible Markdown to styled, self-contained HTML with the mdtohtml CLI. Skill + auto-update on session start. Requires the `mdtohtml` binary on PATH.",
+  "author": { "name": "Mathieu Lomax" }
+}

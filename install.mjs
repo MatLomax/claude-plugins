@@ -6,23 +6,53 @@
 //
 // It multiselects the marketplace's plugins (all off by default) and deep-merges
 // `.claude/settings.json` in the current repo — registering the marketplace and
-// enabling exactly what you pick, never clobbering existing settings. When
-// `worklog` is chosen it also verifies its runtime (Go 1.27+ and the `worklog`
-// binary), can build the binary via `go install`, and can initialise the repo's
-// worklog database — because worklog is attach-only and inert until then.
+// setting exactly the plugins you tick as enabled (the multiselect is
+// authoritative for this marketplace's plugins; unrelated settings are left
+// untouched). For a
+// plugin backed by a CLI binary (worklog, mdtohtml) it offers to install that
+// binary by downloading the latest release for your platform (SHA-256 verified
+// when the release publishes a checksum) and placing it on PATH; after that each
+// tool keeps itself current via its own `<tool> update`. It never requires a
+// language toolchain.
 
 import { intro, outro, multiselect, confirm, note, log, isCancel, cancel } from '@clack/prompts';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, renameSync, copyFileSync, rmSync, symlinkSync, createWriteStream } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import https from 'node:https';
 
 const MARKETPLACE_ID = 'matlomax';
 const REPO = 'MatLomax/claude-plugins';
-const KNOWN_PLUGINS = ['worklog', 'image-to-html'];
-const GO_MIN = [1, 27]; // worklog's go.mod: `go 1.27.0`
+const KNOWN_PLUGINS = ['worklog', 'image-to-html', 'mdtohtml'];
+
+// Plugins backed by a release CLI binary the installer can provision. Asset
+// naming and layout differ per tool, so each carries its own mapping.
+const TOOLS = {
+  worklog: {
+    repo: 'MatLomax/worklog',
+    bin: 'worklog',
+    versionArgs: ['version'],
+    kind: 'binary', // a bare executable
+    osMap: { linux: 'linux', darwin: 'darwin', win32: 'windows' },
+    archMap: { x64: 'amd64', arm64: 'arm64' },
+    releases: 'https://github.com/MatLomax/worklog/releases',
+  },
+  mdtohtml: {
+    repo: 'MatLomax/mdtohtml',
+    bin: 'mdtohtml',
+    versionArgs: ['--version'],
+    kind: 'zip', // a zip of the binary + a themes/ folder
+    osMap: { linux: 'linux', win32: 'windows' }, // no macOS release published
+    archMap: { x64: 'x86_64' },
+    releases: 'https://github.com/MatLomax/mdtohtml/releases',
+  },
+};
 
 const cwd = process.cwd();
 const settingsPath = join(cwd, '.claude', 'settings.json');
+const isWindows = process.platform === 'win32';
 
 // --- small helpers ---------------------------------------------------------
 
@@ -50,36 +80,170 @@ function writeJson(path, obj) {
   writeFileSync(path, JSON.stringify(obj, null, 2) + '\n', 'utf8');
 }
 
-// --- worklog runtime -------------------------------------------------------
-
-// Go toolchain: { ok, version, meets } — `meets` is version >= GO_MIN.
-function checkGo() {
-  const r = spawnSync('go', ['version'], { encoding: 'utf8' });
-  if (r.error || r.status !== 0) return { ok: false, version: null, meets: false };
-  const m = /go(\d+)\.(\d+)(?:\.(\d+))?/.exec(r.stdout || '');
-  if (!m) return { ok: true, version: null, meets: false };
-  const major = Number(m[1]);
-  const minor = Number(m[2]);
-  const version = `${m[1]}.${m[2]}${m[3] ? '.' + m[3] : ''}`;
-  const meets = major > GO_MIN[0] || (major === GO_MIN[0] && minor >= GO_MIN[1]);
-  return { ok: true, version, meets };
+function onPathDir(dir) {
+  return (process.env.PATH || '').split(isWindows ? ';' : ':').includes(dir);
 }
 
-// The `worklog` binary on PATH: { ok, version }. `worklog version` prints e.g.
-// "worklog v0.1.0" (or "worklog dev" for a local build); ENOENT means not found.
-function checkWorklog() {
-  const r = spawnSync('worklog', ['version'], { encoding: 'utf8' });
+// --- release download / verify / place ------------------------------------
+
+// httpsGet resolves to the response stream, following redirects (GitHub asset
+// downloads 302 to a storage host).
+function httpsGet(url, headers = {}, depth = 0) {
+  return new Promise((resolve, reject) => {
+    if (depth > 5) return reject(new Error('too many redirects'));
+    https
+      .get(url, { headers: { 'User-Agent': 'claude-plugins-install', ...headers } }, (res) => {
+        if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+          res.resume();
+          resolve(httpsGet(res.headers.location, headers, depth + 1));
+        } else {
+          resolve(res);
+        }
+      })
+      .on('error', reject);
+  });
+}
+
+async function fetchJson(url) {
+  const res = await httpsGet(url, { Accept: 'application/vnd.github+json' });
+  if (res.statusCode !== 200) throw new Error(`GitHub API returned ${res.statusCode}`);
+  let body = '';
+  for await (const chunk of res) body += chunk;
+  return JSON.parse(body);
+}
+
+async function download(url, dest) {
+  const res = await httpsGet(url);
+  if (res.statusCode !== 200) throw new Error(`download failed (HTTP ${res.statusCode})`);
+  await new Promise((resolve, reject) => {
+    const f = createWriteStream(dest);
+    res.on('error', reject);
+    f.on('error', reject);
+    f.on('finish', resolve);
+    res.pipe(f);
+  });
+}
+
+function sha256(file) {
+  return createHash('sha256').update(readFileSync(file)).digest('hex');
+}
+
+function assetFor(tool) {
+  const os = tool.osMap[process.platform];
+  const arch = tool.archMap[process.arch];
+  if (!os || !arch) return null;
+  if (tool.kind === 'zip') return `${tool.bin}-${os}-${arch}.zip`;
+  return `${tool.bin}-${os}-${arch}${os === 'windows' ? '.exe' : ''}`;
+}
+
+function moveInto(src, dst) {
+  try {
+    renameSync(src, dst); // fast path when src and dst share a filesystem
+  } catch {
+    copyFileSync(src, dst); // temp dir may be on another filesystem
+    rmSync(src, { force: true });
+  }
+}
+
+function extractZip(zip, dir) {
+  mkdirSync(dir, { recursive: true });
+  if (isWindows) {
+    const z = zip.replace(/'/g, "''");
+    const d = dir.replace(/'/g, "''");
+    const r = spawnSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Path '${z}' -DestinationPath '${d}' -Force`], { stdio: 'ignore' });
+    if (r.error || r.status !== 0) throw new Error('could not extract the zip (Expand-Archive failed)');
+  } else {
+    const r = spawnSync('unzip', ['-oq', zip, '-d', dir], { stdio: 'ignore' });
+    if (r.error || r.status !== 0) throw new Error('could not extract the zip (is `unzip` installed?)');
+  }
+}
+
+// addWindowsUserPath appends dir to the user PATH, preserving %VAR% indirections
+// by reading/writing the raw REG_EXPAND_SZ value. A newly opened terminal reads
+// the updated value from the registry (the installer tells the user to reopen).
+function addWindowsUserPath(dir) {
+  const d = dir.replace(/'/g, "''");
+  const ps = [
+    `$d='${d}'`,
+    `$k=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')`,
+    `$raw=[string]$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)`,
+    `$e=@($raw -split ';' | Where-Object {$_ -ne ''})`,
+    `if($e -notcontains $d){$k.SetValue('Path',(($e+$d) -join ';'),[Microsoft.Win32.RegistryValueKind]::ExpandString)}`,
+    `$k.Dispose()`,
+  ].join('; ');
+  spawnSync('powershell', ['-NoProfile', '-Command', ps], { stdio: 'ignore' });
+}
+
+// place installs the downloaded artifact and returns where the binary landed and
+// whether it is already reachable on PATH.
+function place(tool, artifact) {
+  if (tool.kind === 'binary') {
+    const binDir = isWindows ? join(process.env.LOCALAPPDATA || homedir(), 'Programs', tool.bin) : join(homedir(), '.local', 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const target = join(binDir, tool.bin + (isWindows ? '.exe' : ''));
+    moveInto(artifact, target);
+    if (!isWindows) chmodSync(target, 0o755);
+    if (isWindows) addWindowsUserPath(binDir);
+    return { dir: binDir, onPath: onPathDir(binDir) };
+  }
+  // zip: extract the binary + themes/ together into an install dir.
+  const installDir = isWindows ? join(process.env.LOCALAPPDATA || homedir(), 'Programs', tool.bin) : join(homedir(), '.local', 'share', tool.bin);
+  extractZip(artifact, installDir);
+  const exe = join(installDir, tool.bin + (isWindows ? '.exe' : ''));
+  if (isWindows) {
+    addWindowsUserPath(installDir);
+    return { dir: installDir, onPath: onPathDir(installDir) };
+  }
+  chmodSync(exe, 0o755);
+  const binDir = join(homedir(), '.local', 'bin');
+  mkdirSync(binDir, { recursive: true });
+  const link = join(binDir, tool.bin);
+  rmSync(link, { force: true });
+  symlinkSync(exe, link); // themes/ resolves through the symlink at runtime
+  return { dir: binDir, onPath: onPathDir(binDir) };
+}
+
+// provision downloads + verifies + installs the latest release for a tool.
+async function provision(id) {
+  const tool = TOOLS[id];
+  const asset = assetFor(tool);
+  if (!asset) {
+    return { ok: false, msg: `no prebuilt ${id} binary for ${process.platform}/${process.arch}; build from source or see ${tool.releases}` };
+  }
+  let rel;
+  try {
+    rel = await fetchJson(`https://api.github.com/repos/${tool.repo}/releases/latest`);
+  } catch (e) {
+    return { ok: false, msg: `could not reach the latest ${id} release: ${e.message}` };
+  }
+  const a = (rel.assets || []).find((x) => x.name === asset);
+  if (!a) return { ok: false, msg: `the latest ${id} release (${rel.tag_name}) has no asset ${asset}` };
+
+  const artifact = join(tmpdir(), `${id}-${Date.now()}-${asset}`);
+  try {
+    await download(a.browser_download_url, artifact);
+    const digest = (a.digest || '').startsWith('sha256:') ? a.digest.slice('sha256:'.length) : '';
+    if (digest) {
+      const actual = sha256(artifact);
+      if (actual !== digest) throw new Error(`checksum mismatch (expected ${digest}, got ${actual})`);
+    }
+    const placed = place(tool, artifact);
+    return { ok: true, version: rel.tag_name, verified: Boolean(digest), ...placed };
+  } catch (e) {
+    return { ok: false, msg: e.message };
+  } finally {
+    rmSync(artifact, { force: true });
+  }
+}
+
+// --- tool runtime checks ---------------------------------------------------
+
+// onPath reports the tool's version via `<tool> <versionArgs>`, or not-found.
+function onPath(id) {
+  const tool = TOOLS[id];
+  const r = spawnSync(tool.bin, tool.versionArgs, { encoding: 'utf8' });
   if (r.error || r.status !== 0) return { ok: false, version: null };
   return { ok: true, version: (r.stdout || '').trim() };
-}
-
-// Where `go install` drops binaries, for a PATH hint when it lands off-PATH.
-function goBinDir() {
-  const bin = (spawnSync('go', ['env', 'GOBIN'], { encoding: 'utf8' }).stdout || '').trim();
-  if (bin) return bin;
-  const gopath = (spawnSync('go', ['env', 'GOPATH'], { encoding: 'utf8' }).stdout || '').trim();
-  if (gopath) return join(gopath.split(process.platform === 'win32' ? ';' : ':')[0], 'bin');
-  return '$(go env GOPATH)/bin';
 }
 
 // worklog is attach-only: `worklog init` creates ./.worklog/tasks.db (idempotent).
@@ -88,45 +252,29 @@ function worklogInit() {
   return { ok: !r.error && r.status === 0, out: (r.stdout || r.stderr || '').trim() };
 }
 
-// Verify (and, on opt-in, provision + initialise) worklog. Returns the status the
-// end-of-run checks report: { go, binary, initialised }.
-async function worklogSetup() {
-  const status = { go: checkGo(), binary: checkWorklog(), initialised: false };
-
-  // Binary missing but Go present → offer to build it (v0.1.0 is a released tag).
-  if (!status.binary.ok && status.go.ok && status.go.meets) {
-    const build = guard(
-      await confirm({
-        message: `worklog is not on PATH. Build it now with \`go install\` (Go ${status.go.version} found)?`,
-        initialValue: true,
-      })
-    );
-    if (build) {
-      log.message('Running `go install github.com/MatLomax/worklog/cmd/worklog@latest` — this can take a minute…');
-      spawnSync('go', ['install', 'github.com/MatLomax/worklog/cmd/worklog@latest'], { stdio: 'inherit' });
-      status.binary = checkWorklog();
-      if (!status.binary.ok) {
-        note(`Built worklog, but it is not on PATH — check that ${goBinDir()} is on your PATH, then reopen your shell.`, 'worklog');
-      }
-    }
+// setupTool verifies a tool and, when missing, offers to install its release.
+async function setupTool(id) {
+  const status = onPath(id);
+  if (status.ok) return status;
+  const doInstall = guard(
+    await confirm({
+      message: `${id} is not on PATH. Download and install the latest release now?`,
+      initialValue: true,
+    })
+  );
+  if (!doInstall) return status;
+  log.message(`Downloading the latest ${id} release ...`);
+  const res = await provision(id);
+  if (!res.ok) {
+    note(`Could not install ${id}: ${res.msg}`, id);
+    return status;
   }
-
-  // With a usable binary, offer to initialise this repo (else the plugin stays inert).
-  if (status.binary.ok) {
-    const doInit = guard(
-      await confirm({
-        message: 'Initialise worklog for this repo now? (creates ./.worklog/tasks.db — idempotent)',
-        initialValue: true,
-      })
-    );
-    if (doInit) {
-      const r = worklogInit();
-      status.initialised = r.ok;
-      if (!r.ok) note(`worklog init did not complete: ${r.out || 'unknown error'}`, 'worklog');
-    }
-  }
-
-  return status;
+  // Make the freshly-installed binary reachable for the rest of THIS run (e.g.
+  // `worklog init`). `res.onPath` was measured before this mutation, so it still
+  // reflects whether a *new shell* would find it. The persistent PATH edit only
+  // takes effect in future shells.
+  if (res.dir) process.env.PATH = res.dir + (isWindows ? ';' : ':') + (process.env.PATH || '');
+  return { ok: true, version: res.version, installedTo: res.dir, onPath: res.onPath, verified: res.verified };
 }
 
 // --- main ------------------------------------------------------------------
@@ -144,7 +292,8 @@ async function main() {
     await multiselect({
       message: 'Which plugins to enable in this repo? (all off by default — tick what you want)',
       options: [
-        { value: 'worklog', label: 'worklog', hint: 'Per-project SQLite task & decision log (Go binary, verified below)' },
+        { value: 'worklog', label: 'worklog', hint: 'Per-project SQLite task & decision log (release binary, checked below)' },
+        { value: 'mdtohtml', label: 'mdtohtml', hint: 'Convert Obsidian Markdown to self-contained HTML (release binary, checked below)' },
         { value: 'image-to-html', label: 'image-to-html', hint: 'Reconstruct HTML from a mockup and gate the render against it' },
       ],
       initialValues: [],
@@ -152,7 +301,26 @@ async function main() {
     })
   );
 
-  const worklogStatus = plugins.includes('worklog') ? await worklogSetup() : null;
+  // Verify (and offer to install) each release-backed tool that was chosen.
+  const toolStatus = {};
+  for (const id of plugins) {
+    if (TOOLS[id]) toolStatus[id] = await setupTool(id);
+  }
+
+  // With a usable worklog, offer to initialise this repo (else the plugin is inert).
+  if (plugins.includes('worklog') && toolStatus.worklog && toolStatus.worklog.ok) {
+    const doInit = guard(
+      await confirm({
+        message: 'Initialise worklog for this repo now? (creates ./.worklog/tasks.db — idempotent)',
+        initialValue: true,
+      })
+    );
+    if (doInit) {
+      const r = worklogInit();
+      toolStatus.worklog.initialised = r.ok;
+      if (!r.ok) note(`worklog init did not complete: ${r.out || 'unknown error'}`, 'worklog');
+    }
+  }
 
   // --- write .claude/settings.json (deep-merge, never clobber) ---
   const settings = readJson(settingsPath);
@@ -168,25 +336,31 @@ async function main() {
 
   note(`Plugins enabled: ${plugins.join(', ')}\nWrote: .claude/settings.json`, 'Done');
 
-  // Real checks for worklog's runtime (not blanket reminders).
-  if (worklogStatus) {
-    const st = worklogStatus;
+  // Real per-tool checks (not blanket reminders).
+  for (const id of plugins) {
+    const st = toolStatus[id];
+    if (!st) continue;
     const checks = [];
-
-    if (!st.go.ok) checks.push('✗ Go is not installed — needed to build worklog (https://go.dev/dl, 1.27+).');
-    else if (!st.go.meets) checks.push(`⚠ Go ${st.go.version} found — worklog needs ${GO_MIN.join('.')}+.`);
-    else checks.push(`✓ Go ${st.go.version}.`);
-
-    checks.push(
-      st.binary.ok
-        ? `✓ worklog on PATH (${st.binary.version}).`
-        : '✗ worklog not on PATH — install it: `go install github.com/MatLomax/worklog/cmd/worklog@latest`, or download a release from github.com/MatLomax/worklog/releases.'
-    );
-
-    if (st.initialised) checks.push('✓ worklog initialised for this repo (.worklog/tasks.db).');
-    else if (st.binary.ok) checks.push('⚠ worklog not initialised here — run `/worklog:init` (or `worklog init`) to activate it.');
-
-    note(checks.join('\n'), 'worklog');
+    if (st.ok) {
+      checks.push(`[ok] ${id} on PATH${st.version ? ` (${st.version})` : ''}.`);
+      if (st.installedTo) {
+        checks.push(
+          st.verified
+            ? '[ok] downloaded release verified against its published SHA-256.'
+            : '[!] the release published no checksum; the download was over HTTPS but not SHA-256-verified.'
+        );
+        if (!st.onPath) {
+          checks.push(`[!] installed to ${st.installedTo}, which is not on your PATH yet. Add it, then reopen your shell.`);
+        }
+      }
+    } else {
+      checks.push(`[x] ${id} not on PATH — install a release from ${TOOLS[id].releases}, then re-run.`);
+    }
+    if (id === 'worklog') {
+      if (st.initialised) checks.push('[ok] worklog initialised for this repo (.worklog/tasks.db).');
+      else if (st.ok) checks.push('[!] worklog not initialised here — run `/worklog:init` (or `worklog init`) to activate it.');
+    }
+    note(checks.join('\n'), id);
   }
 
   // The one step the installer can't do for you — it runs outside Claude Code.
