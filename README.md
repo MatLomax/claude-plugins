@@ -45,7 +45,7 @@ Update later with `/plugin marketplace update matlomax`.
 |---|---|
 | `image-to-html` | Reconstruct HTML from a mockup image and objectively gate the render against it — per-region SSIM, edge-XOR border detection, colour/tint sweeps, glyph measurement. Explicit-invoke only. |
 | `worklog` | Per-project, SQLite-backed task & decision log for coding agents, remembered across sessions — task tree with blocking, GitHub-issue links, first-class decisions, and a per-session journal, over MCP. Run `/worklog:init` per project; `/worklog:update` (or the session-start auto-update) keeps the binary current. **Requires the [`worklog`](https://github.com/MatLomax/worklog) binary on PATH.** |
-| `mdtohtml` | Convert Obsidian-compatible Markdown to styled, self-contained HTML (themes, callouts, wikilinks, chips, KaTeX math, pre-rendered mermaid diagrams, a report hero). A skill teaches an agent the CLI; `/mdtohtml:update` (or the session-start auto-update) keeps the binary current. **Requires the [`mdtohtml`](https://github.com/MatLomax/mdtohtml) binary on PATH.** |
+| `mdtohtml` | Convert extended Markdown to styled, self-contained HTML (themes, callouts, wikilinks, chips, KaTeX math, pre-rendered mermaid diagrams, a report hero). A skill teaches an agent the CLI; `/mdtohtml:update` (or the session-start auto-update) keeps the binary current. **Requires the [`mdtohtml`](https://github.com/MatLomax/mdtohtml) binary on PATH.** |
 
 ## Layout
 

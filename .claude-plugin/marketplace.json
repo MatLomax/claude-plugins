@@ -17,7 +17,7 @@
     {
       "name": "mdtohtml",
       "source": "./plugins/mdtohtml",
-      "description": "Convert Obsidian-compatible Markdown to styled, self-contained HTML with the mdtohtml CLI. Skill + /mdtohtml:update + auto-update on session start. Requires the `mdtohtml` binary on PATH.",
+      "description": "Convert extended Markdown to styled, self-contained HTML with the mdtohtml CLI. Skill + /mdtohtml:update + auto-update on session start. Requires the `mdtohtml` binary on PATH.",
       "defaultEnabled": false
     }
   ]

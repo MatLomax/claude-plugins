@@ -1,7 +1,7 @@
 ---
 name: mdtohtml
 description: >-
-  Convert Obsidian-compatible Markdown to a styled, self-contained HTML file
+  Convert extended Markdown to a styled, self-contained HTML file
   with the mdtohtml command-line tool. Covers themes (default, dark, print,
   report), the table-of-contents sidebar, callouts, wikilinks, coloured chips,
   KaTeX math, pre-rendered mermaid diagrams, the report hero front matter, and
@@ -14,7 +14,7 @@ description: >-
 
 # Converting Markdown to HTML with `mdtohtml`
 
-`mdtohtml` converts one or more Obsidian-compatible Markdown files into styled,
+`mdtohtml` converts one or more extended Markdown files into styled,
 **single-file, self-contained** HTML — no server, no network call, and no
 separate CSS or asset files. Everything (theme CSS, math markup, diagram SVG,
 embedded images) is inlined into each output file. Math and diagrams are
@@ -65,7 +65,7 @@ modes any failure aborts with a message.
 | `-o`, `--output PATH` | Output file (a `.html` path) or directory (any other path). Omit for stdout. |
 | `--theme NAME` | Theme to inline. One of `default`, `dark`, `print`, `report` (plus any extra `.css` in the themes folder). Default: `default`. |
 | `--toc` | Add a table-of-contents sidebar built from the document headings. |
-| `--ignore "a,b"` | Comma-separated Obsidian callout **types** to drop from the output, e.g. `--ignore "info,tip"`. |
+| `--ignore "a,b"` | Comma-separated callout **types** to drop from the output, e.g. `--ignore "info,tip"`. |
 | `--themes-dir DIR` | Use a themes folder kept elsewhere instead of the one beside the binary. |
 | `--version` | Print the version and exit. |
 | `-h`, `--help` | Print usage and exit. |
@@ -94,7 +94,7 @@ drop `mytheme.css` there (or into a `--themes-dir` folder) and pass
 
 ## Supported Markdown
 
-Standard Markdown plus Obsidian and extended syntax:
+Standard Markdown plus extended syntax:
 
 - **Callouts:** a blockquote whose first line is `[!type]` (optionally
   `[!type] Custom title`). `type` must be one of 15 recognised types — `note`,

@@ -293,7 +293,7 @@ async function main() {
       message: 'Which plugins to enable in this repo? (all off by default — tick what you want)',
       options: [
         { value: 'worklog', label: 'worklog', hint: 'Per-project SQLite task & decision log (release binary, checked below)' },
-        { value: 'mdtohtml', label: 'mdtohtml', hint: 'Convert Obsidian Markdown to self-contained HTML (release binary, checked below)' },
+        { value: 'mdtohtml', label: 'mdtohtml', hint: 'Convert extended Markdown to self-contained HTML (release binary, checked below)' },
         { value: 'image-to-html', label: 'image-to-html', hint: 'Reconstruct HTML from a mockup and gate the render against it' },
       ],
       initialValues: [],
