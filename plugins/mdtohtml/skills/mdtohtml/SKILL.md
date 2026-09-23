@@ -19,9 +19,10 @@ description: >-
 separate CSS or asset files. Everything (theme CSS, math markup, diagram SVG,
 embedded images) is inlined into each output file. Math and diagrams are
 pre-rendered at convert time, so they carry no client-side script; the only
-JavaScript that can appear is a small **inline** scrollspy that highlights the
-active section in the `--toc` sidebar. Without `--toc` the output runs zero
-JavaScript.
+JavaScript that can appear is two small **inline** scripts for the `--toc`
+sidebar: one that collapses it before first paint, and a scrollspy that
+highlights the active section plus the collapse/expand toggle. Without `--toc`
+the output runs zero JavaScript.
 
 Assume the `mdtohtml` command is already on `PATH`. Installing it is out of
 scope for this skill. If the command is missing, say so and stop — do not try
@@ -108,9 +109,22 @@ Standard Markdown plus extended syntax:
 - **Tables, footnotes, task lists** (`- [ ]` / `- [x]`), fenced **code blocks
   with syntax highlighting** (and `hl_lines` line emphasis), `~~strikethrough~~`,
   and `==highlight==`.
+- **Wrapped code blocks:** add `{wrap}` after a fence's language
+  (` ```python {wrap} `) to soft-wrap long lines instead of scrolling
+  horizontally. Alongside other options write a bare `wrap` instead: inside a
+  brace group (` ```{.python title="a | b" wrap} `) or among plain options
+  (` ```python linenums="1" wrap `). **Never mix plain options with a brace
+  group** on one fence line (` ```python linenums="1" {wrap} ` is wrong): the
+  fence is then not recognised at all and its closing backticks swallow the
+  next block. `wrap` is ignored on `mermaid` fences.
 - **Table of contents:** enabled with `--toc` (a sidebar built from the
   headings, **`h1`–`h3` only** — deeper headings never appear), not inline
-  syntax.
+  syntax. Under `default`, `dark` and `report` the sidebar opens collapsed to
+  a slim rail with a menu button that slides it out (without JavaScript it
+  simply stays open); `print` shows it as a static contents list. Append
+  `{-toc}` to a heading line (`## Appendix {-toc}`) to keep that heading out of
+  the sidebar; the heading still renders but loses its anchor id, so nothing
+  can link to it.
 - **Typographic dashes:** `--` becomes an en-dash and `---` an em-dash; quotes
   and ellipses are left exactly as typed.
 
@@ -161,6 +175,35 @@ flowchart LR
 ```
 ````
 
+**Semantic colours.** In flowchart, state and class diagrams, colour carries
+meaning, so every theme ships six classes that colour a node, a flowchart
+subgraph or a composite state with **no `classDef`**. Prefer them over
+hand-picked `classDef`/`style` colours, which don't adapt to the theme or to
+dark mode:
+
+| Class | Use for |
+|-------|---------|
+| `success` | done, happy path, passing (green) |
+| `warning` | caution, degraded, manual step (amber) |
+| `danger` | failure, error, blocked (red, heavier border) |
+| `info` | external system, informational (teal) |
+| `accent` | the focus: new, changed, "look here" (violet) |
+| `muted` | out of scope, deprecated, optional (grey, dashed border) |
+
+````markdown
+```mermaid
+flowchart LR
+    A[Build]:::info --> B{Tests pass?}:::warning
+    B -->|yes| C[Deploy]:::success
+    B -->|no| D[Rollback]:::danger
+```
+````
+
+Subgraphs and states take `class S1 danger`; class diagrams use
+`class Legacy:::muted`. An author `classDef` with the same name, or a `style`
+statement on the element, overrides the built-in colour; a semantic class beats
+`classDef default`.
+
 ### Self-contained images
 
 An image whose source is a `data:` URI is preserved and ships inside the HTML —
@@ -190,8 +233,8 @@ but become styled elements under the `report` theme:
   Traced from **converter.py**.
   :::
   ```
-- **Keyed table** — a line containing only `{.keyed}` immediately above a table
-  marks that table for an accent key column. A `{.keyed}` with no table right
+- **Keyed table** — a line containing only `{keyed}` immediately above a table
+  marks that table for an accent key column. A `{keyed}` with no table right
   after it stays literal text.
 - **Code-block title bar** — a fenced block written
   ` ```{.python title="Before the fix | MainWnd.cs"} ` highlights normally and
