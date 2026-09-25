@@ -1,6 +1,6 @@
 {
   "name": "claude-plugins-installer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Interactive installer that enables the matlomax Claude Code plugins in a repo. The plugins carry their own runtimes (worklog is a separate Go binary); this dependency is the installer's alone.",

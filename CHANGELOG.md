@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-25
+
 ### Added
 
 - Non-interactive mode: `--plugins=<name>[,<name>...]` (repeatable) selects plugins without
@@ -74,10 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `export PATH="$HOME/.local/bin:$PATH"` line for the shell profile. Whether it is on PATH is
   measured against the PATH the installer started with, so installing a second tool into the
   same directory no longer hides the warning, and a PATH entry with a trailing `/` counts.
-- Windows: running the installer from PowerShell 7 no longer breaks the Windows PowerShell 5.1
-  steps it runs (unpacking the mdtohtml zip, updating the user PATH and broadcasting the change).
-  5.1 used to inherit PowerShell 7's module path and fail to load modules such as the one that
-  provides `Add-Type`; it now starts without `PSModulePath` and uses its own default.
+- Windows: the Windows PowerShell 5.1 steps the installer runs (unpacking the mdtohtml zip,
+  updating the user PATH and broadcasting the change) start without `PSModulePath`, so when the
+  installer is launched from PowerShell 7 they use 5.1's own module path instead of inheriting
+  7's, which Microsoft documents can make 5.1 load the wrong modules.
 - The worklog and mdtohtml plugins' session hooks no longer error when their binary is not on
   PATH: they do nothing. With the binary on PATH they run it as before and pass its exit code
   through.
@@ -122,5 +124,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The installer requires Node 20.12 or newer (`@clack/prompts` 1.7.0 already
   did; `engines` now says so).
 
-[Unreleased]: https://github.com/MatLomax/claude-plugins/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/MatLomax/claude-plugins/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/MatLomax/claude-plugins/releases/tag/v1.0.1
 [1.0.0]: https://github.com/MatLomax/claude-plugins/releases/tag/v1.0.0
