@@ -179,9 +179,15 @@ function windowsEnv(dirs, extra = {}) {
   return { ...env, Path: dirs.join(delimiter), ...extra };
 }
 
+// run executes one hook command the way Claude Code does, with a JSON payload
+// on stdin. A hook that skips its tool exits without reading stdin, so writing
+// the payload can race the exit and fail with EPIPE; spawnSync still reports the
+// real status and output then, so EPIPE alone is not an error.
 function run(shell, cmd, env) {
   const [exe, args] = shell.argv(cmd);
-  return spawnSync(exe, args, { env, encoding: 'utf8', input: '{}' });
+  const r = spawnSync(exe, args, { env, encoding: 'utf8', input: '{}' });
+  if (r.error?.code === 'EPIPE') delete r.error;
+  return r;
 }
 
 test('every plugin that ships hooks/hooks.json is covered here', () => {
