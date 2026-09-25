@@ -8,9 +8,16 @@
     "claude-plugins-install": "install.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "node scripts/build.mjs"
   },
   "dependencies": {
-    "@clack/prompts": "^1.7.0"
+    "@clack/prompts": "1.7.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

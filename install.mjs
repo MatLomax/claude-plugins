@@ -2,7 +2,7 @@
 // Interactive installer for the `matlomax` Claude Code plugin marketplace.
 //
 // Run from the root of the repo you want to enable the plugins in:
-//   npx github:MatLomax/claude-plugins
+//   npx https://matlomax.com/claude-plugins.tgz
 //
 // It multiselects the marketplace's plugins (all off by default) and deep-merges
 // `.claude/settings.json` in the current repo — registering the marketplace and
@@ -14,14 +14,26 @@
 // when the release publishes a checksum) and placing it on PATH; after that each
 // tool keeps itself current via its own `<tool> update`. It never requires a
 // language toolchain.
+//
+// Before the prompts it checks GitHub for a newer installer release and, if
+// there is one, relaunches as `npx <that release's claude-plugins-<v>.tgz>`
+// (`--no-self-update` skips this). `--insecure` skips certificate checks on the
+// installer's own downloads for networks that intercept HTTPS; see `--help`.
 
 import { intro, outro, multiselect, confirm, note, log, isCancel, cancel } from '@clack/prompts';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, renameSync, copyFileSync, rmSync, symlinkSync, createWriteStream } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, renameSync, copyFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import https from 'node:https';
+import { parseCli, parseErrorMessage, USAGE } from './lib/args.mjs';
+import { fetchJson, download } from './lib/net.mjs';
+import { describeError, integrityLine, INSECURE_WARNING } from './lib/tls.mjs';
+import { selfUpdate } from './lib/selfupdate.mjs';
+
+// The installer's version is the package.json shipped beside this script (in
+// the repo and in the release tarball alike).
+const VERSION = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 const MARKETPLACE_ID = 'matlomax';
 const REPO = 'MatLomax/claude-plugins';
@@ -54,6 +66,9 @@ const cwd = process.cwd();
 const settingsPath = join(cwd, '.claude', 'settings.json');
 const isWindows = process.platform === 'win32';
 
+// Parsed command line; `insecure` is read by every download below.
+let cli = { insecure: false };
+
 // --- small helpers ---------------------------------------------------------
 
 function bail() {
@@ -85,44 +100,6 @@ function onPathDir(dir) {
 }
 
 // --- release download / verify / place ------------------------------------
-
-// httpsGet resolves to the response stream, following redirects (GitHub asset
-// downloads 302 to a storage host).
-function httpsGet(url, headers = {}, depth = 0) {
-  return new Promise((resolve, reject) => {
-    if (depth > 5) return reject(new Error('too many redirects'));
-    https
-      .get(url, { headers: { 'User-Agent': 'claude-plugins-install', ...headers } }, (res) => {
-        if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
-          res.resume();
-          resolve(httpsGet(res.headers.location, headers, depth + 1));
-        } else {
-          resolve(res);
-        }
-      })
-      .on('error', reject);
-  });
-}
-
-async function fetchJson(url) {
-  const res = await httpsGet(url, { Accept: 'application/vnd.github+json' });
-  if (res.statusCode !== 200) throw new Error(`GitHub API returned ${res.statusCode}`);
-  let body = '';
-  for await (const chunk of res) body += chunk;
-  return JSON.parse(body);
-}
-
-async function download(url, dest) {
-  const res = await httpsGet(url);
-  if (res.statusCode !== 200) throw new Error(`download failed (HTTP ${res.statusCode})`);
-  await new Promise((resolve, reject) => {
-    const f = createWriteStream(dest);
-    res.on('error', reject);
-    f.on('error', reject);
-    f.on('finish', resolve);
-    res.pipe(f);
-  });
-}
 
 function sha256(file) {
   return createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -212,16 +189,16 @@ async function provision(id) {
   }
   let rel;
   try {
-    rel = await fetchJson(`https://api.github.com/repos/${tool.repo}/releases/latest`);
+    rel = await fetchJson(`https://api.github.com/repos/${tool.repo}/releases/latest`, { insecure: cli.insecure });
   } catch (e) {
-    return { ok: false, msg: `could not reach the latest ${id} release: ${e.message}` };
+    return { ok: false, msg: `could not reach the latest ${id} release: ${describeError(e)}` };
   }
   const a = (rel.assets || []).find((x) => x.name === asset);
   if (!a) return { ok: false, msg: `the latest ${id} release (${rel.tag_name}) has no asset ${asset}` };
 
   const artifact = join(tmpdir(), `${id}-${Date.now()}-${asset}`);
   try {
-    await download(a.browser_download_url, artifact);
+    await download(a.browser_download_url, artifact, { insecure: cli.insecure });
     const digest = (a.digest || '').startsWith('sha256:') ? a.digest.slice('sha256:'.length) : '';
     if (digest) {
       const actual = sha256(artifact);
@@ -230,7 +207,7 @@ async function provision(id) {
     const placed = place(tool, artifact);
     return { ok: true, version: rel.tag_name, verified: Boolean(digest), ...placed };
   } catch (e) {
-    return { ok: false, msg: e.message };
+    return { ok: false, msg: describeError(e) };
   } finally {
     rmSync(artifact, { force: true });
   }
@@ -279,11 +256,39 @@ async function setupTool(id) {
 
 // --- main ------------------------------------------------------------------
 
+// parseCommandLine handles --help / --version (print and exit, before any
+// network or prompt) and rejects unknown flags with exit code 2.
+function parseCommandLine(argv) {
+  let parsed;
+  try {
+    parsed = parseCli(argv);
+  } catch (err) {
+    console.error(`claude-plugins-install: ${parseErrorMessage(err)}\n\n${USAGE}`);
+    process.exit(2);
+  }
+  if (parsed.help) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+  if (parsed.version) {
+    console.log(VERSION);
+    process.exit(0);
+  }
+  return parsed;
+}
+
 async function main() {
+  cli = parseCommandLine(process.argv.slice(2));
+
   if (!process.stdout.isTTY || !process.stdin.isTTY) {
     console.error('claude-plugins-install is interactive — run it in a terminal (not piped or in CI).');
     process.exit(1);
   }
+
+  if (cli.insecure) console.error(INSECURE_WARNING);
+
+  const update = await selfUpdate({ ownVersion: VERSION, cli, fetchJson, spawn });
+  if (update.action === 'exit') process.exit(update.code);
 
   intro('matlomax plugins');
   log.message(`Enabling the marketplace "${MARKETPLACE_ID}" (${REPO}) in:\n${cwd}`);
@@ -344,11 +349,7 @@ async function main() {
     if (st.ok) {
       checks.push(`[ok] ${id} on PATH${st.version ? ` (${st.version})` : ''}.`);
       if (st.installedTo) {
-        checks.push(
-          st.verified
-            ? '[ok] downloaded release verified against its published SHA-256.'
-            : '[!] the release published no checksum; the download was over HTTPS but not SHA-256-verified.'
-        );
+        checks.push(integrityLine({ verified: st.verified, insecure: cli.insecure }));
         if (!st.onPath) {
           checks.push(`[!] installed to ${st.installedTo}, which is not on your PATH yet. Add it, then reopen your shell.`);
         }
@@ -368,6 +369,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  cancel(err && err.message ? err.message : String(err));
+  cancel(describeError(err));
   process.exit(1);
 });
