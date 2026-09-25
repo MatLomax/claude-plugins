@@ -3,15 +3,24 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "worklog session-start" },
-          { "type": "command", "command": "worklog update --auto" }
+          {
+            "type": "command",
+            "command": "echo \"\\\" | Out-Null <# \" >/dev/null; if command -v worklog >/dev/null 2>&1; then worklog session-start; fi; exit $? #> ; if (Get-Command worklog -CommandType Application -ErrorAction SilentlyContinue) { worklog session-start; exit $LASTEXITCODE }; exit 0"
+          },
+          {
+            "type": "command",
+            "command": "echo \"\\\" | Out-Null <# \" >/dev/null; if command -v worklog >/dev/null 2>&1; then worklog update --auto; fi; exit $? #> ; if (Get-Command worklog -CommandType Application -ErrorAction SilentlyContinue) { worklog update --auto; exit $LASTEXITCODE }; exit 0"
+          }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "worklog session-end" }
+          {
+            "type": "command",
+            "command": "echo \"\\\" | Out-Null <# \" >/dev/null; if command -v worklog >/dev/null 2>&1; then worklog session-end; fi; exit $? #> ; if (Get-Command worklog -CommandType Application -ErrorAction SilentlyContinue) { worklog session-end; exit $LASTEXITCODE }; exit 0"
+          }
         ]
       }
     ]

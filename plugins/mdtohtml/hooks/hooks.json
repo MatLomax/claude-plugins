@@ -3,7 +3,10 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "mdtohtml update --auto" }
+          {
+            "type": "command",
+            "command": "echo \"\\\" | Out-Null <# \" >/dev/null; if command -v mdtohtml >/dev/null 2>&1; then mdtohtml update --auto; fi; exit $? #> ; if (Get-Command mdtohtml -CommandType Application -ErrorAction SilentlyContinue) { mdtohtml update --auto; exit $LASTEXITCODE }; exit 0"
+          }
         ]
       }
     ]
