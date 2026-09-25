@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-25
+
 ### Added
 
 - The installer ships as a prebuilt, dependency-free tarball attached to
@@ -44,3 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bundled release tarball is reproducible.
 - The installer requires Node 20.12 or newer (`@clack/prompts` 1.7.0 already
   did; `engines` now says so).
+
+[Unreleased]: https://github.com/MatLomax/claude-plugins/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/MatLomax/claude-plugins/releases/tag/v1.0.0
