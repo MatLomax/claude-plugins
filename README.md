@@ -29,32 +29,133 @@ settings, safe to re-run. When you enable a binary-backed plugin (`worklog`,
 `mdtohtml`) it checks the binary is on PATH and, if missing, offers to **download
 and install the latest release** for your platform (SHA-256 verified) — no
 language toolchain needed. For `worklog` it also offers to run `worklog init` so
-the repo's task log is live rather than inert. It needs a terminal (it is
-interactive) and, at the end, reports what it verified. Then reload Claude Code
-and accept the "trust this folder" dialog.
+the repo's task log is live rather than inert. It is interactive by default and
+then needs a terminal; with `--plugins` it runs without prompts or a terminal
+(see [Non-interactive](#non-interactive)). At the end it reports what it
+verified, then prints the `claude plugin install` commands for the plugins you
+picked (see [below](#the-plugin-list-says-no-plugins-are-installed)). Then
+reload Claude Code and accept the "trust this folder" dialog.
 
-Flags: `--insecure` (skip TLS certificate verification for the installer's
-own downloads — see [troubleshooting](#behind-a-corporate-proxy-or-https-scanning-antivirus)
-below), `--no-self-update` (skip the check for a newer release and run this
-version as is — an escape hatch if a release is broken, or a way to run an
-older version from its versioned URL), `--help`, `--version`.
+An installed binary lands in `~/.local/bin` on macOS and Linux (on Linux,
+`mdtohtml` is unpacked to `~/.local/share/mdtohtml` and symlinked there; it has
+no macOS release). The installer does not edit shell profiles: if that
+directory is not on your PATH, the summary says so and shows the
+`export PATH="$HOME/.local/bin:$PATH"` line to add to your shell profile. On
+Windows it goes to `%LOCALAPPDATA%\Programs\<tool>`, which is appended to your
+user PATH in the registry (keeping it a `REG_EXPAND_SZ` value, so `%VAR%`
+entries survive), read back to confirm, and announced to running programs with
+the same `WM_SETTINGCHANGE` broadcast `setx` sends. The summary reports whether
+the directory was added, was already there, or could not be added (with the
+reason and how to add it by hand). Programs that are already open keep their
+old PATH: **fully quit Claude Desktop (from the system tray, not just its
+window) and close any open terminals and IDEs, then reopen them.** Whenever a
+binary was just installed, on any OS, the installer ends with a reminder to
+restart Claude Code / Claude Desktop and open terminals.
+
+If `.claude/settings.json` exists but is not valid JSON, is not a JSON object,
+or has an `enabledPlugins`, `extraKnownMarketplaces` or
+`extraKnownMarketplaces.matlomax` entry that is not a JSON object, the installer
+stops (exit 1) before prompting or installing anything and leaves the file as it
+is.
+
+Flags:
+
+- `--plugins=<name>[,<name>...]` — non-interactive mode; see [below](#non-interactive).
+- `--install-tools` — auto-install missing plugin binaries in non-interactive mode (requires
+  `--plugins`).
+- `--no-worklog-init` — skip the automatic `worklog init` in non-interactive mode (requires
+  `--plugins`).
+- `--insecure` — skip TLS certificate verification for the installer's own downloads (see
+  [troubleshooting](#behind-a-corporate-proxy-or-https-scanning-antivirus) below).
+- `--no-self-update` — skip the check for a newer release and run this version as is (an escape
+  hatch if a release is broken, or a way to run an older version from its versioned URL).
+- `--help` (`-h`), `--version` — print and exit 0, whatever else is on the command line.
+
+### Non-interactive
+
+For scripts and CI, skip the picker entirely:
+
+```bash
+npx https://matlomax.com/claude-plugins.tgz --plugins=worklog,mdtohtml --install-tools
+```
+
+`--plugins=<name>[,<name>...]` (may also be repeated) selects plugins without prompting and makes
+the run non-interactive — no prompts, no terminal required. Valid names: `worklog`, `mdtohtml`,
+`image-to-html`. Listed plugins are enabled in `.claude/settings.json` (and the marketplace
+registered); plugins you don't list are left as they are — non-interactive mode only adds, it
+never disables (unlike the interactive picker, which also turns off unticked plugins). At least
+one name is required; an unknown name is an error (exit 2).
+
+`--install-tools` downloads and installs the latest release for any listed binary-backed plugin
+(`worklog`, `mdtohtml`) whose binary isn't on PATH — the same as answering yes in the interactive
+prompt (SHA-256 verified when the release publishes a checksum; installed where described
+[above](#install)). Without it, a missing binary is only reported. When
+`worklog` is listed and its binary ends up usable, `worklog init` runs automatically in the
+current repo; `--no-worklog-init` skips that. `--install-tools` and `--no-worklog-init` only work
+alongside `--plugins` — used without it, they're a usage error (exit 2).
+
+Exit code is 1 if a listed binary-backed plugin ends up without a usable binary, if (on Windows)
+a binary was installed but its directory could not be added to the user PATH (Claude Code would
+not find it), or if `worklog init` ran and failed (settings are still written in every case, and
+the reason is printed on stderr); 0 otherwise. Usage errors exit 2. Combines with `--insecure` and
+`--no-self-update`.
+
+The two PATH outcomes differ on purpose. On Windows the installer adds the install directory to
+the user PATH itself, so a failed write is an error: exit 1. On macOS and Linux it only installs
+into `~/.local/bin` and leaves shell profiles to you, so a `~/.local/bin` that is not on PATH is
+not a failure: the run exits 0 and prints a warning on stderr (so CI logs show it) naming the tool
+and the directory to add. On a CI runner, put `~/.local/bin` on PATH for later steps (on GitHub
+Actions, `echo "$HOME/.local/bin" >> "$GITHUB_PATH"`).
 
 ## Manual setup
 
 Prefer to wire it by hand?
 
 ```bash
-# once per machine — registers the catalogue, enables nothing
+# once per machine, inside Claude Code — registers the catalogue, enables nothing
 /plugin marketplace add MatLomax/claude-plugins
 
-# in a project that wants a skill — writes .claude/settings.json (committed)
-/plugin install image-to-html@matlomax --scope project
+# in a project that wants a skill, from a terminal in that repo — writes
+# .claude/settings.json (committed)
+claude plugin install image-to-html@matlomax --scope project
 #   …or --scope local to keep it out of git
 ```
 
 Update later with `/plugin marketplace update matlomax`.
 
 ## Troubleshooting
+
+### The plugin list says no plugins are installed
+
+Claude Desktop's plugin list (and `claude plugin list`) can say "no plugin
+installed for this project" even though `.claude/settings.json` enables the
+plugins. This marketplace's plugins are relative-path plugins: Claude loads
+them straight from the marketplace because they are enabled in settings, with
+no install record, and the plugin list only shows plugins that have one. An
+explicit project-scope install creates the record, so the installer ends by
+printing the marketplace registration plus one install line per plugin picked
+in that run:
+
+```bash
+claude plugin marketplace add MatLomax/claude-plugins
+claude plugin install <name>@matlomax --scope project
+```
+
+Run those in a terminal in the repo. (It is the `claude` shell command, not the
+in-session `/plugin install`, which takes no `--scope` flag.) The
+`marketplace add` line registers the marketplace with your Claude Code, which
+the install needs; repeating it is harmless. In Claude Desktop, use the Code tab: **+ > Plugins > Add
+plugin**, choose the plugin, then **this project**.
+
+### A plugin's binary is "not found" after installing it
+
+A binary installed by the installer is on the PATH of new programs only. On
+Windows, fully quit Claude Desktop from the system tray and close every
+terminal and IDE, then reopen them; if they still can't find it, sign out of
+Windows and back in. If the summary said the directory could not be added to
+your user PATH, add it by hand: Start > "Edit environment variables for your
+account" > `Path` > New. On macOS and Linux, add `~/.local/bin` to PATH in your
+shell profile and open a new terminal.
 
 ### Behind a corporate proxy or HTTPS-scanning antivirus
 
@@ -124,7 +225,7 @@ git config --global http.sslBackend schannel
 
 ```
 install.mjs · package.json           # the `npx` interactive installer (repo root)
-lib/                                 # installer modules: args, net, tls, selfupdate
+lib/                                 # installer modules: args, flow, net, place, plugins, selfupdate, tls, userpath
 scripts/build.mjs                    # bundles install.mjs + deps into dist/ (npm run build)
 scripts/check-tag.mjs                # fails a release whose tag differs from package.json
 scripts/changelog-notes.mjs          # extracts a version's CHANGELOG section as release notes

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { parseCli } from '../lib/args.mjs';
 import { parseSemver, isNewer, fetchLatestVersion, relaunchPlan, manualCommand, selfUpdate, LATEST_RELEASE_API, RELAUNCH_ENV } from '../lib/selfupdate.mjs';
 
 test('parseSemver: accepts X.Y.Z with optional v, rejects the rest', () => {
@@ -148,7 +149,11 @@ test('selfUpdate: child failure exits with its code and prints the manual comman
   const { spawn } = fakeSpawn({ code: 7 });
   const { r, lines } = await run({ spawn });
   assert.deepEqual(r, { action: 'exit', code: 7 });
-  assert.match(lines.at(-1), /exited with code 7[\s\S]*npx https:\/\/github\.com\/MatLomax\/claude-plugins\/releases\/download\/v1\.1\.0\/claude-plugins-1\.1\.0\.tgz$/);
+  assert.equal(
+    lines.at(-1),
+    '[x] the newer installer v1.1.0 exited with code 7 (see its output above). If it never started (npm could not download it), run it yourself:\n' +
+      '  npx https://github.com/MatLomax/claude-plugins/releases/download/v1.1.0/claude-plugins-1.1.0.tgz'
+  );
 });
 
 test('selfUpdate: spawn error exits non-zero with the manual command, never continues', async () => {
@@ -160,4 +165,17 @@ test('selfUpdate: spawn error exits non-zero with the manual command, never cont
   const throwing = () => { throw new Error('EINVAL'); };
   const second = await run({ spawn: throwing });
   assert.deepEqual(second.r, { action: 'exit', code: 1 });
+});
+
+test('selfUpdate: a non-interactive run relaunches with its plugins and mode flags', async () => {
+  for (const platform of ['linux', 'win32']) {
+    const { spawn, calls } = fakeSpawn({ code: 0 });
+    const cli = parseCli(['--plugins=worklog,mdtohtml', '--install-tools', '--no-worklog-init']);
+    const { r } = await run({ spawn, cli, platform });
+    assert.deepEqual(r, { action: 'exit', code: 0 });
+    const flags = ['--plugins=worklog', '--plugins=mdtohtml', '--install-tools', '--no-worklog-init'];
+    const url = 'https://github.com/MatLomax/claude-plugins/releases/download/v1.1.0/claude-plugins-1.1.0.tgz';
+    if (platform === 'win32') assert.equal(calls[0].command, ['npx', '-y', url, ...flags].join(' '));
+    else assert.deepEqual(calls[0].args, ['-y', url, ...flags]);
+  }
 });

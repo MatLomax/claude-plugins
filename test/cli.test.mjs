@@ -29,6 +29,7 @@ test('--help and -h print usage and exit 0', () => {
     assert.match(r.stdout, /^Usage: npx https:\/\/matlomax\.com\/claude-plugins\.tgz/);
     assert.match(r.stdout, /--insecure/);
     assert.match(r.stdout, /--no-self-update/);
+    assert.match(r.stdout, /--plugins=<names>/);
   }
 });
 
@@ -45,9 +46,48 @@ test('an unknown flag prints a short error plus usage and exits 2', () => {
   assert.match(r.stderr, /^claude-plugins-install: Unknown option '--frobnicate'\n\nUsage:/);
 });
 
-test('without a terminal it refuses before checking for updates', () => {
+test('without a terminal and without --plugins it refuses before checking for updates', () => {
   const r = run([]);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /interactive/);
+  assert.match(r.stderr, /--plugins/);
   assert.doesNotMatch(r.stderr, /newer installer/);
+});
+
+test('--help and --version win over an invalid --plugins list', () => {
+  for (const args of [['--help', '--plugins=nope'], ['--plugins=', '-h'], ['--install-tools', '--help']]) {
+    const r = run(args);
+    assert.equal(r.status, 0, `${args}: ${r.stderr}`);
+    assert.match(r.stdout, /^Usage: /);
+    assert.equal(r.stderr, '');
+  }
+  const r = run(['--version', '--plugins=worklog,nope']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `${pkg.version}\n`);
+});
+
+test('--help, -h and --version win over a flag that does not parse', () => {
+  for (const args of [['--help', '--plugins'], ['--plugins', '--help'], ['--plugins', '-h'], ['--bogus', '--help']]) {
+    const r = run(args);
+    assert.equal(r.status, 0, `${args}: ${r.stderr}`);
+    assert.match(r.stdout, /^Usage: /);
+    assert.equal(r.stderr, '');
+  }
+  const r = run(['--plugins', '--version']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `${pkg.version}\n`);
+});
+
+test('--plugins=--help is a plugin name, not the help flag', () => {
+  const r = run(['--plugins=--help']);
+  assert.equal(r.status, 2);
+  assert.equal(r.stdout, '');
+  assert.match(r.stderr, /^claude-plugins-install: unknown plugin '--help'/);
+});
+
+test('a parseArgs error spanning several lines is shown as one line, then usage', () => {
+  const r = run(['--plugins', '--install-tools']);
+  assert.equal(r.status, 2);
+  assert.equal(r.stdout, '');
+  assert.match(r.stderr, /^claude-plugins-install: Option '--plugins' argument is ambiguous\n\nUsage:/);
 });

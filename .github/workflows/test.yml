@@ -22,3 +22,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node --test test/userpath.windows.test.mjs test/place.windows.test.mjs test/userpath.test.mjs test/hooks.test.mjs
