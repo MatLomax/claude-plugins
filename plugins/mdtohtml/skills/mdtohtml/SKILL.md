@@ -109,6 +109,11 @@ Standard Markdown plus extended syntax:
 - **Tables, footnotes, task lists** (`- [ ]` / `- [x]`), fenced **code blocks
   with syntax highlighting** (and `hl_lines` line emphasis), `~~strikethrough~~`,
   and `==highlight==`.
+- **Nested lists:** indent each level by 2 or 4 spaces past its parent's
+  marker (3 under a numbered item also works); a fence or further paragraph
+  inside an item goes after a blank line at the item's content indent. A list
+  starts only after a blank line, a heading, a `---` rule or a raw HTML line:
+  a `- item` line directly under paragraph text stays part of that paragraph.
 - **Wrapped code blocks:** add `{wrap}` after a fence's language
   (` ```python {wrap} `) to soft-wrap long lines instead of scrolling
   horizontally. Alongside other options write a bare `wrap` instead: inside a
