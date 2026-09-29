@@ -109,30 +109,24 @@ Standard Markdown plus extended syntax:
 - **Tables, footnotes, task lists** (`- [ ]` / `- [x]`), fenced **code blocks
   with syntax highlighting** (and `hl_lines` line emphasis), `~~strikethrough~~`,
   and `==highlight==`.
-- **Table column widths:** a line containing only `{cols=3,1,1}`, starting at
-  column 0, immediately above a table sets its column split as relative
-  weights (here 60% / 20% / 20%) instead of letting columns size to their
-  content. The weights are always scaled to fill the table: a trailing `%` is
-  accepted but ignored (`{cols=50%,25%,25%}` is 50 / 25 / 25, while
-  `{cols=50%,50%,50%}` is three equal thirds), so never mix `%` and plain
-  numbers. Give **exactly one weight per column**:
-  a count mismatch, or no table right after it, leaves the line as literal
-  text and the table auto-sized. Write the marker exactly: an unknown option
-  or a malformed weight (`{cols=3,1,1 wide}`, `{cols=a,1}`) is not recognised,
-  so the line merges with the table below into one plain paragraph and the
-  **table does not render**. Long unbroken words wrap inside their
+- **Table column widths:** a line containing only `{cols=3,1,1}` directly
+  above a table sets its column split as relative weights (here 60% / 20% /
+  20%) instead of letting columns size to their content. The weights are
+  always scaled to fill the table: a trailing `%` is accepted but ignored
+  (`{cols=50%,25%,25%}` is 50 / 25 / 25, while `{cols=50%,50%,50%}` is three
+  equal thirds), so never mix `%` and plain numbers. Give **exactly one weight
+  per column**. A marker that does not fit (a count mismatch, a typo, an
+  unknown option, a malformed weight, or no table right after it) stays in the
+  page as literal text and the table renders auto-sized, so a mistake is
+  visible rather than silent. Long unbroken words wrap inside their
   fixed-width cell. Works in every theme, and combines with `keyed` in one
   marker: `{keyed cols=3,1,1}`.
-- **Where table markers go** (`{cols=...}`, `{keyed}`): directly above its
-  table only on a top-level line with no leading space. Anywhere else
-  (indented, inside a list item or a blockquote), a marker directly above the
-  table merges with it and the **table does not render**; put a blank line
-  between the marker and the table there and it applies normally. The line
-  above a marker must be blank (or a heading, or the start of the document):
-  a marker written directly under a paragraph or list-item line joins that
-  text, so it shows as literal text and the table renders without it. Never
-  indent a marker 4+ spaces or by a tab at top level; that makes it a code
-  block.
+- **Where table markers go** (`{cols=...}`, `{keyed}`): on the line directly
+  above the table (a blank line between them also works). The marker works at
+  top level, inside a list item and inside a blockquote, and it may sit
+  directly under a line of text or a heading. At top level, a marker that
+  starts its own block (after a blank line) indented 4+ spaces or by a tab is
+  an indented code block, as in any Markdown.
 - **Nested lists:** indent each level by 2 or 4 spaces past its parent's
   marker (3 under a numbered item also works); a fence or further paragraph
   inside an item goes after a blank line at the item's content indent. A list
