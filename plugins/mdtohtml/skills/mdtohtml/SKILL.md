@@ -109,6 +109,25 @@ Standard Markdown plus extended syntax:
 - **Tables, footnotes, task lists** (`- [ ]` / `- [x]`), fenced **code blocks
   with syntax highlighting** (and `hl_lines` line emphasis), `~~strikethrough~~`,
   and `==highlight==`.
+- **Table column widths:** a line containing only `{cols=3,1,1}`, starting at
+  column 0, immediately above a table sets its column split as relative
+  weights (here 60% / 20% / 20%) instead of letting columns size to their
+  content. The weights are always scaled to fill the table: a trailing `%` is
+  accepted but ignored (`{cols=50%,25%,25%}` is 50 / 25 / 25, while
+  `{cols=50%,50%,50%}` is three equal thirds), so never mix `%` and plain
+  numbers. Give **exactly one weight per column**:
+  a count mismatch, or no table right after it, leaves the line as literal
+  text and the table auto-sized. Write the marker exactly: an unknown option
+  or a malformed weight (`{cols=3,1,1 wide}`, `{cols=a,1}`) is not recognised,
+  so the line merges with the table below into one plain paragraph and the
+  **table does not render**. Long unbroken words wrap inside their
+  fixed-width cell. Works in every theme, and combines with `keyed` in one
+  marker: `{keyed cols=3,1,1}`.
+- **Where table markers go** (`{cols=...}`, `{keyed}`): directly above its
+  table only on a top-level line with no leading space. Anywhere else
+  (indented, inside a list item or a blockquote), a marker directly above the
+  table merges with it and the **table does not render**; put a blank line
+  between the marker and the table there and it applies normally.
 - **Nested lists:** indent each level by 2 or 4 spaces past its parent's
   marker (3 under a numbered item also works); a fence or further paragraph
   inside an item goes after a blank line at the item's content indent. A list
@@ -240,7 +259,8 @@ but become styled elements under the `report` theme:
   ```
 - **Keyed table** — a line containing only `{keyed}` immediately above a table
   marks that table for an accent key column. A `{keyed}` with no table right
-  after it stays literal text.
+  after it stays literal text. To also set column widths, use one combined
+  marker, `{keyed cols=3,1,1}` (see *Table column widths*), not two lines.
 - **Code-block title bar** — a fenced block written
   ` ```{.python title="Before the fix | MainWnd.cs"} ` highlights normally and
   gets a card header bar; the title splits on the first `|` into a left label
