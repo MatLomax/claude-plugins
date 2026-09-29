@@ -127,7 +127,12 @@ Standard Markdown plus extended syntax:
   table only on a top-level line with no leading space. Anywhere else
   (indented, inside a list item or a blockquote), a marker directly above the
   table merges with it and the **table does not render**; put a blank line
-  between the marker and the table there and it applies normally.
+  between the marker and the table there and it applies normally. The line
+  above a marker must be blank (or a heading, or the start of the document):
+  a marker written directly under a paragraph or list-item line joins that
+  text, so it shows as literal text and the table renders without it. Never
+  indent a marker 4+ spaces or by a tab at top level; that makes it a code
+  block.
 - **Nested lists:** indent each level by 2 or 4 spaces past its parent's
   marker (3 under a numbered item also works); a fence or further paragraph
   inside an item goes after a blank line at the item's content indent. A list
